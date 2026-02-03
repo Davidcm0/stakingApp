@@ -1,4 +1,5 @@
 Accumulative Staking Smart Contract
+
 Descripción general
 
 Este smart contract implementa una aplicación de staking acumulativo, inspirada en el patrón MasterChef, donde las recompensas se calculan mediante un sistema de reward per token acumulado (index-based accounting).
