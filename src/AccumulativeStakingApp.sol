@@ -5,6 +5,13 @@ pragma solidity 0.8.30;
 import "../lib/openzeppelin-contracts/contracts/access/Ownable.sol";
 import "../lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 
+/**
+ * @title AccumulativeStakingApp
+ * @author David
+ * @notice Smart contract to stake ERC20 tokens and earn ETH rewards in an accumulative manner with penalties for early withdrawal
+ * @dev Uses reward accumulation per token staked to efficiently calculate rewards
+ */
+
 contract AccumulativeStakingApp is Ownable {
 
     uint256 constant PRECISION = 1e18;
@@ -13,7 +20,7 @@ contract AccumulativeStakingApp is Ownable {
     uint256 public accRewardPerToken; // accumulated reward per token staked, scaled by 1e18
     uint256 public lastUpdateTime; // last time the accRewardPerToken was updated
     uint256 public totalStaked; // total tokens staked in the contract
-    uint256 public rewardRate; //fixed reward per staking period, 
+    uint256 public rewardRate; //fixed reward per staking period, scaled by 1e18
     uint256 public lockPeriod;
     uint256 public penaltyRate; //penalty rate for early withdrawal, scaled by 1e4 (e.g., 2000 = 20.00%)
     struct StakerInfo {
@@ -50,6 +57,7 @@ contract AccumulativeStakingApp is Ownable {
         emit SetPenaltyRate(penaltyRate_, msg.sender);
     }
     
+    //@notice Deposit tokens to stake and start earning rewards
     function depositStake(uint256 tokenAmountToDeposit_) external {
         StakerInfo storage staker = stakers[msg.sender];
         updateRewardsData();
@@ -72,6 +80,7 @@ contract AccumulativeStakingApp is Ownable {
         emit Staked(tokenAmountToDeposit_, msg.sender);
     }
 
+    //@notice Withdraw staked tokens, with penalty if withdrawn before unlock time
     function withdrawStake(uint256 amountToWithdraw) public {
         //Checks
         StakerInfo storage staker = stakers[msg.sender];
@@ -80,7 +89,7 @@ contract AccumulativeStakingApp is Ownable {
         require(amountToWithdraw <= staker.stakingBalance, "Not enough staked balance");
 
         if (block.timestamp < staker.unlockTime) {
-            penalty = (amountToWithdraw * penaltyRate) / 10000; //penalización del 20.00% por retirada anticipada
+            penalty = (amountToWithdraw * penaltyRate) / 10000; //20.00% penalty for early withdrawal
         }
 
         uint256 toUser = amountToWithdraw - penalty;
@@ -94,7 +103,7 @@ contract AccumulativeStakingApp is Ownable {
 
         //Interactions
         if (penalty > 0 && totalStaked > 0) {
-            accRewardPerToken += (penalty * PRECISION) / totalStaked; //redistribuir la penalización entre los stakers
+            accRewardPerToken += (penalty * PRECISION) / totalStaked; //redistribute the penalty among stakers
         }
         bool success = IERC20(address(stakingToken)).transfer(msg.sender, toUser);
         require(success, "Token transfer failed");
@@ -102,6 +111,7 @@ contract AccumulativeStakingApp is Ownable {
         emit Withdraw(amountToWithdraw, penalty, msg.sender);
     }
 
+    //@notice Claim accumulated rewards
     function claimRewards() public {
         //Check the balance staked
         StakerInfo storage staker = stakers[msg.sender];
@@ -121,6 +131,7 @@ contract AccumulativeStakingApp is Ownable {
 
     }
 
+    //@notice Exit staking: withdraw all stake and claim all rewards
     function exit() external {
         StakerInfo storage staker = stakers[msg.sender];
         uint256 stakedAmount = staker.stakingBalance;
@@ -129,11 +140,12 @@ contract AccumulativeStakingApp is Ownable {
         claimRewards();
     }
 
+    //@notice Receive ether to fund rewards pool
     receive() external payable onlyOwner() {
-        //función receive para recibir ethers
+        //receive function to accept ethers
         emit EtherReceived(msg.sender, msg.value);
     }
-
+    //@dev update the accumulated reward per token staked and the last update time
     function updateRewardsData() internal {
         if(block.timestamp <= lastUpdateTime) return;
         if (totalStaked != 0) {
